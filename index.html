@@ -16,8 +16,6 @@
         .animate-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .modal-overlay { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); }
-        .error-card { animation: shake 0.5s ease-in-out; }
-        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -26,8 +24,19 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useCallback } = React;
 
-        // 최신 웹앱 URL 적용
+        // 최신 웹앱 URL
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5IS-sr9Jd5qlYwCHeJkppCMgPa2267xBCuGWR0Czo0GJkO8jgl08GKBVVTvt2wmIb/exec";
+
+        // 한국 날짜 문자열 생성 함수 (YYYY-MM-DD)
+        const getKSTDateString = (dateInput) => {
+            // 입력값이 없으면 현재 시스템 시간을 사용 (오늘 2월 5일 반영)
+            const date = dateInput ? new Date(dateInput) : new Date();
+            
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
 
         const Icon = ({ name, size = 18, className = "" }) => {
             return <i data-lucide={name} className={className} style={{ width: size, height: size, display: 'inline-flex' }}></i>;
@@ -53,12 +62,9 @@
                     
                     const result = await response.json();
                     
-                    // 데이터 형식 유연하게 처리
                     if (Array.isArray(result)) {
-                        // 결과가 바로 배열인 경우 (이전 방식)
                         setInquiries(result);
                     } else if (result && typeof result === 'object') {
-                        // 결과가 객체인 경우 (최신 방식: { inquiries, categories })
                         if (result.error) throw new Error(result.error);
                         setInquiries(Array.isArray(result.inquiries) ? result.inquiries : []);
                         if (Array.isArray(result.categories) && result.categories.length > 0) {
@@ -66,7 +72,7 @@
                         }
                     }
                 } catch (err) {
-                    setError(err.message || "데이터를 불러오는 중 오류가 발생했습니다.");
+                    setError(err.message || "데이터 로드 중 오류 발생");
                 } finally {
                     setLoading(false);
                 }
@@ -85,6 +91,7 @@
                 const action = editingItem ? 'update' : 'insert';
                 const data = {
                     ...formData,
+                    '날짜': getKSTDateString(formData['날짜']),
                     ID: editingItem ? editingItem.ID : Date.now()
                 };
 
@@ -144,20 +151,20 @@
                                     <Icon name="layout-dashboard" className="text-blue-600" />
                                     <span>사업비 이슈 및 회계 질의 관리</span>
                                 </h1>
-                                <p className="text-slate-500 text-sm mt-1">구글 시트 실시간 연동 중</p>
+                                <p className="text-slate-500 text-sm mt-1">구글 시트 연동 중 (현재: {getKSTDateString()})</p>
                             </div>
                             <div className="flex gap-2">
                                 <button 
                                     onClick={fetchData}
                                     disabled={loading}
-                                    className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-sm"
+                                    className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
                                 >
                                     <Icon name="refresh-cw" className={loading ? "animate-spin" : ""} />
-                                    <span>{loading ? "불러오는 중..." : "동기화"}</span>
+                                    <span>동기화</span>
                                 </button>
                                 <button 
                                     onClick={() => { setEditingItem(null); setIsModalOpen(true); }}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-md"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-md active:scale-95"
                                 >
                                     <Icon name="plus" />
                                     <span>새 질의 등록</span>
@@ -166,13 +173,9 @@
                         </header>
 
                         {error && (
-                            <div className="mb-6 p-6 bg-red-50 border border-red-200 text-red-700 rounded-xl text-left error-card shadow-sm">
-                                <div className="flex items-center gap-2 mb-2 font-bold text-lg">
-                                    <Icon name="alert-triangle" />
-                                    <span>오류가 발생했습니다</span>
-                                </div>
+                            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-left shadow-sm">
+                                <p className="font-bold flex items-center gap-2 mb-1"><Icon name="alert-circle" /> 연결 오류</p>
                                 <p className="text-sm">{error}</p>
-                                <button onClick={fetchData} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors">다시 시도</button>
                             </div>
                         )}
 
@@ -190,14 +193,14 @@
                                     </div>
                                     <input 
                                         type="text" 
-                                        placeholder="제목 또는 내용으로 검색..." 
-                                        className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all text-left"
+                                        placeholder="제목 또는 내용 검색..." 
+                                        className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
                                 </div>
                                 <select 
-                                    className="px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[140px] text-left"
+                                    className="px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[140px]"
                                     value={filterCategory}
                                     onChange={(e) => setFilterCategory(e.target.value)}
                                 >
@@ -211,23 +214,22 @@
                             <div className="divide-y divide-slate-100 min-h-[300px]">
                                 {loading && inquiries.length === 0 ? (
                                     <div className="p-24 text-center text-slate-400">
-                                        <div className="flex flex-col items-center gap-4">
-                                            <Icon name="loader-2" className="animate-spin text-blue-500" size={40} />
-                                            <p className="font-bold text-slate-600">데이터를 로딩 중입니다...</p>
-                                        </div>
+                                        <Icon name="loader-2" className="animate-spin mb-2" size={32} />
+                                        <p>데이터 로딩 중...</p>
                                     </div>
                                 ) : filteredInquiries.length > 0 ? (
                                     filteredInquiries.map((item, idx) => (
                                         <InquiryItem 
                                             key={item.ID || idx} 
                                             item={item} 
+                                            formatDate={getKSTDateString}
                                             onEdit={() => { setEditingItem(item); setIsModalOpen(true); }}
                                             onDelete={() => setDeleteConfirmId(item.ID)}
                                         />
                                     ))
                                 ) : (
                                     <div className="p-20 text-center text-slate-400">
-                                        {loading ? "데이터 갱신 중..." : "표시할 데이터가 없습니다."}
+                                        기록이 없거나 검색 결과가 없습니다.
                                     </div>
                                 )}
                             </div>
@@ -238,6 +240,7 @@
                         <Modal 
                             item={editingItem} 
                             categories={categories}
+                            getToday={getKSTDateString}
                             onClose={() => setIsModalOpen(false)} 
                             onSave={handleSave} 
                             loading={loading}
@@ -247,14 +250,10 @@
                     {deleteConfirmId && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 modal-overlay">
                             <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
-                                <div className="flex items-center gap-3 text-red-600 mb-4 text-left">
-                                    <Icon name="trash-2" size={24} />
-                                    <h3 className="text-lg font-bold">삭제 확인</h3>
-                                </div>
-                                <p className="text-slate-500 text-sm mb-6 leading-relaxed text-left">정말 삭제하시겠습니까? 구글 시트에서도 즉시 제거됩니다.</p>
+                                <h3 className="text-lg font-bold mb-4 text-left">정말 삭제하시겠습니까?</h3>
                                 <div className="flex gap-2">
-                                    <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">취소</button>
-                                    <button onClick={confirmDelete} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700">삭제</button>
+                                    <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 font-bold">취소</button>
+                                    <button onClick={confirmDelete} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold">삭제</button>
                                 </div>
                             </div>
                         </div>
@@ -269,23 +268,21 @@
                     <Icon name={icon} className={color} />
                 </div>
                 <div>
-                    <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">{title}</p>
+                    <p className="text-sm font-medium text-slate-500">{title}</p>
                     <p className="text-2xl font-bold text-slate-900">{value}건</p>
                 </div>
             </div>
         );
 
-        const InquiryItem = ({ item, onEdit, onDelete }) => {
+        const InquiryItem = ({ item, formatDate, onEdit, onDelete }) => {
             const [isOpen, setIsOpen] = useState(false);
             
             const category = (item['비목'] || "기타").toString();
             const title = (item['제목'] || "제목 없음").toString();
             const status = (item['상태'] || "대기").toString();
             const firm = (item['회계법인'] || "-").toString();
-            const date = (item['날짜'] || "-").toString();
-            const priority = (item['우선순위'] || "중간").toString();
-            const question = (item['질의내용'] || "").toString();
-            const answer = (item['답변내용'] || "").toString();
+            
+            const displayDate = formatDate(item['날짜']);
 
             const statusColors = {
                 '완료': 'bg-green-100 text-green-700 border-green-200',
@@ -297,9 +294,9 @@
                 <div className={`transition-all ${isOpen ? 'bg-blue-50/30' : 'hover:bg-slate-50'}`}>
                     <div className="p-4 flex items-center justify-between cursor-pointer select-none" onClick={() => setIsOpen(!isOpen)}>
                         <div className="flex items-center gap-4 flex-1">
-                            <div className={`w-2 h-2 rounded-full ${priority === '높음' ? 'bg-red-500' : 'bg-slate-300'}`} />
+                            <div className={`w-2 h-2 rounded-full ${item['우선순위'] === '높음' ? 'bg-red-500' : 'bg-slate-300'}`} />
                             <div className="flex-1 text-left">
-                                <div className="flex items-center gap-2 mb-1 text-left">
+                                <div className="flex items-center gap-2 mb-1">
                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">
                                         {category}
                                     </span>
@@ -307,7 +304,7 @@
                                 </div>
                                 <div className="flex items-center gap-4 text-xs text-slate-500">
                                     <span className="flex items-center gap-1"><Icon name="building" size={12}/>{firm}</span>
-                                    <span className="flex items-center gap-1"><Icon name="calendar" size={12}/>{date}</span>
+                                    <span className="flex items-center gap-1"><Icon name="calendar" size={12}/>{displayDate}</span>
                                 </div>
                             </div>
                         </div>
@@ -320,23 +317,23 @@
                     </div>
 
                     {isOpen && (
-                        <div className="px-12 pb-6 pt-2 animate-in slide-in-from-top-1 duration-200 text-left">
-                            <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm space-y-4 text-left">
+                        <div className="px-12 pb-6 pt-2 text-left">
+                            <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm space-y-4">
                                 <div>
-                                    <h4 className="text-[11px] font-bold text-blue-600 mb-1 flex items-center gap-1 uppercase tracking-tight">
+                                    <h4 className="text-[11px] font-bold text-blue-600 mb-1 flex items-center gap-1">
                                         <Icon name="help-circle" size={14}/> 질의 내용
                                     </h4>
-                                    <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{question}</p>
+                                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{item['질의내용'] || "내용 없음"}</p>
                                 </div>
                                 <div className="pt-4 border-t border-slate-100">
-                                    <h4 className="text-[11px] font-bold text-green-600 mb-1 flex items-center gap-1 uppercase tracking-tight">
+                                    <h4 className="text-[11px] font-bold text-green-600 mb-1 flex items-center gap-1">
                                         <Icon name="check-circle" size={14}/> 회계법인 답변
                                     </h4>
-                                    <p className="text-sm text-slate-700 italic leading-relaxed">{answer || "답변을 기다리고 있습니다."}</p>
+                                    <p className="text-sm text-slate-700 italic">{item['답변내용'] || "답변 대기 중"}</p>
                                 </div>
                                 <div className="flex justify-end gap-2 pt-2">
-                                    <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-xs font-bold text-blue-600 px-4 py-2 rounded-lg border border-blue-200 hover:bg-blue-50">수정하기</button>
-                                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-xs font-bold text-red-600 px-4 py-2 rounded-lg border border-red-200 hover:bg-red-50">삭제</button>
+                                    <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-xs font-bold text-blue-600 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-50">수정</button>
+                                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-xs font-bold text-red-600 px-3 py-1.5 rounded border border-red-200 hover:bg-red-50">삭제</button>
                                 </div>
                             </div>
                         </div>
@@ -345,30 +342,29 @@
             );
         };
 
-        const Modal = ({ item, categories, onClose, onSave, loading }) => {
+        const Modal = ({ item, categories, getToday, onClose, onSave, loading }) => {
             const [formData, setFormData] = useState(item ? {
                 ...item,
-                '비목': item['비목'] || categories[0],
-                '제목': item['제목'] || '',
-                '회계법인': item['회계법인'] || '',
-                '상태': item['상태'] || '대기',
-                '날짜': item['날짜'] || new Date().toISOString().split('T')[0],
-                '질의내용': item['질의내용'] || '',
-                '답변내용': item['답변내용'] || '',
-                '우선순위': item['우선순위'] || '중간'
+                '날짜': getToday(item['날짜'])
             } : {
-                '비목': categories[0], '제목': '', '회계법인': '', '상태': '대기',
-                '날짜': new Date().toISOString().split('T')[0], '질의내용': '', '답변내용': '', '우선순위': '중간'
+                '비목': categories[0], 
+                '제목': '', 
+                '회계법인': '', 
+                '상태': '대기',
+                '날짜': getToday(), 
+                '질의내용': '', 
+                '답변내용': '', 
+                '우선순위': '중간'
             });
 
             return (
-                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 modal-overlay text-left">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden text-left flex flex-col max-h-[90vh]">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 modal-overlay">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 text-left">
                             <h2 className="text-xl font-bold">{item ? "질의 내역 수정" : "새 질의 등록"}</h2>
-                            <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><Icon name="x" size={20} /></button>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full"><Icon name="x" size={20} /></button>
                         </div>
-                        <div className="p-6 space-y-4 overflow-y-auto">
+                        <div className="p-6 space-y-4 overflow-y-auto text-left">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-[11px] font-bold text-slate-400 uppercase">비목</label>
@@ -380,7 +376,7 @@
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-[11px] font-bold text-slate-400 uppercase">회계법인</label>
-                                    <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['회계법인']} onChange={(e) => setFormData({...formData, '회계법인': e.target.value})} placeholder="법인명 (예: 안진)" />
+                                    <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['회계법인']} onChange={(e) => setFormData({...formData, '회계법인': e.target.value})} placeholder="법인명" />
                                 </div>
                             </div>
                             <div className="space-y-1">
@@ -388,8 +384,12 @@
                                 <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['제목']} onChange={(e) => setFormData({...formData, '제목': e.target.value})} placeholder="질의 요약" />
                             </div>
                             <div className="space-y-1">
+                                <label className="text-[11px] font-bold text-slate-400 uppercase">날짜 (오늘: {getToday()})</label>
+                                <input type="date" className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['날짜']} onChange={(e) => setFormData({...formData, '날짜': e.target.value})} />
+                            </div>
+                            <div className="space-y-1">
                                 <label className="text-[11px] font-bold text-slate-400 uppercase">질의 상세 내용</label>
-                                <textarea className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]" value={formData['질의내용']} onChange={(e) => setFormData({...formData, '질의내용': e.target.value})} />
+                                <textarea className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]" value={formData['질의내용']} onChange={(e) => setFormData({...formData, '질의내용': e.target.value})} />
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[11px] font-bold text-slate-400 uppercase">회계법인 답변 내용</label>
@@ -411,8 +411,8 @@
                             </div>
                         </div>
                         <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                            <button onClick={onClose} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-lg">취소</button>
-                            <button onClick={() => onSave(formData)} disabled={loading} className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 shadow-lg">
+                            <button onClick={onClose} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-lg transition-colors">취소</button>
+                            <button onClick={() => onSave(formData)} disabled={loading} className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 shadow-lg transition-all active:scale-95">
                                 {loading ? <Icon name="loader-2" className="animate-spin" /> : <Icon name="save" />}
                                 <span>저장하기</span>
                             </button>

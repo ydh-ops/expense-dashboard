@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사업비 이슈 및 회계 질의 관리</title>
+    <!-- React 및 라이브러리 로드 -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
+        body { font-family: 'Pretendard', sans-serif; -webkit-font-smoothing: antialiased; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .modal-overlay { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); }
+        .error-card { animation: shake 0.5s ease-in-out; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useCallback } = React;
+
+        // 최신 웹앱 URL 적용
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5IS-sr9Jd5qlYwCHeJkppCMgPa2267xBCuGWR0Czo0GJkO8jgl08GKBVVTvt2wmIb/exec";
+
+        const Icon = ({ name, size = 18, className = "" }) => {
+            return <i data-lucide={name} className={className} style={{ width: size, height: size, display: 'inline-flex' }}></i>;
+        };
+
+        const App = () => {
+            const [inquiries, setInquiries] = useState([]);
+            const [categories, setCategories] = useState(["인건비", "직접비", "위탁사업비", "간접비"]);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterCategory, setFilterCategory] = useState('전체');
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+            const fetchData = useCallback(async () => {
+                setLoading(true);
+                setError(null);
+                try {
+                    const response = await fetch(SCRIPT_URL);
+                    if (!response.ok) throw new Error(`서버 응답 오류 (상태코드: ${response.status})`);
+                    
+                    const result = await response.json();
+                    
+                    // 데이터 형식 유연하게 처리
+                    if (Array.isArray(result)) {
+                        // 결과가 바로 배열인 경우 (이전 방식)
+                        setInquiries(result);
+                    } else if (result && typeof result === 'object') {
+                        // 결과가 객체인 경우 (최신 방식: { inquiries, categories })
+                        if (result.error) throw new Error(result.error);
+                        setInquiries(Array.isArray(result.inquiries) ? result.inquiries : []);
+                        if (Array.isArray(result.categories) && result.categories.length > 0) {
+                            setCategories(result.categories);
+                        }
+                    }
+                } catch (err) {
+                    setError(err.message || "데이터를 불러오는 중 오류가 발생했습니다.");
+                } finally {
+                    setLoading(false);
+                }
+            }, []);
+
+            useEffect(() => {
+                fetchData();
+            }, [fetchData]);
+
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+
+            const handleSave = async (formData) => {
+                setLoading(true);
+                const action = editingItem ? 'update' : 'insert';
+                const data = {
+                    ...formData,
+                    ID: editingItem ? editingItem.ID : Date.now()
+                };
+
+                try {
+                    await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action, data })
+                    });
+                    await fetchData();
+                    setIsModalOpen(false);
+                    setEditingItem(null);
+                } catch (err) {
+                    setError("데이터 저장 중 오류가 발생했습니다.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const confirmDelete = async () => {
+                if (!deleteConfirmId) return;
+                setLoading(true);
+                try {
+                    await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'delete', data: { ID: deleteConfirmId } })
+                    });
+                    await fetchData();
+                    setDeleteConfirmId(null);
+                } catch (err) {
+                    setError("데이터 삭제 중 오류가 발생했습니다.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const stats = useMemo(() => ({
+                total: inquiries.length,
+                completed: inquiries.filter(i => (i['상태'] || "").toString() === '완료').length,
+                pending: inquiries.filter(i => (i['상태'] || "").toString() !== '완료').length,
+            }), [inquiries]);
+
+            const filteredInquiries = inquiries.filter(item => {
+                const title = (item['제목'] || "").toString().toLowerCase();
+                const content = (item['질의내용'] || "").toString().toLowerCase();
+                const matchesSearch = title.includes(searchTerm.toLowerCase()) || content.includes(searchTerm.toLowerCase());
+                const category = (item['비목'] || "기타").toString();
+                const matchesCategory = filterCategory === '전체' || category === filterCategory;
+                return matchesSearch && matchesCategory;
+            });
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 bg-slate-50">
+                    <div className="max-w-6xl mx-auto">
+                        <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                            <div className="text-left">
+                                <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                                    <Icon name="layout-dashboard" className="text-blue-600" />
+                                    <span>사업비 이슈 및 회계 질의 관리</span>
+                                </h1>
+                                <p className="text-slate-500 text-sm mt-1">구글 시트 실시간 연동 중</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={fetchData}
+                                    disabled={loading}
+                                    className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-sm"
+                                >
+                                    <Icon name="refresh-cw" className={loading ? "animate-spin" : ""} />
+                                    <span>{loading ? "불러오는 중..." : "동기화"}</span>
+                                </button>
+                                <button 
+                                    onClick={() => { setEditingItem(null); setIsModalOpen(true); }}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-md"
+                                >
+                                    <Icon name="plus" />
+                                    <span>새 질의 등록</span>
+                                </button>
+                            </div>
+                        </header>
+
+                        {error && (
+                            <div className="mb-6 p-6 bg-red-50 border border-red-200 text-red-700 rounded-xl text-left error-card shadow-sm">
+                                <div className="flex items-center gap-2 mb-2 font-bold text-lg">
+                                    <Icon name="alert-triangle" />
+                                    <span>오류가 발생했습니다</span>
+                                </div>
+                                <p className="text-sm">{error}</p>
+                                <button onClick={fetchData} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors">다시 시도</button>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-left">
+                            <StatCard title="전체 이슈" value={stats.total} icon="file-text" color="text-blue-500" />
+                            <StatCard title="검토 완료" value={stats.completed} icon="check-circle-2" color="text-green-500" />
+                            <StatCard title="진행중/대기" value={stats.pending} icon="clock" color="text-amber-500" />
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-left">
+                            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-4">
+                                <div className="relative flex-1">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                        <Icon name="search" size={16} />
+                                    </div>
+                                    <input 
+                                        type="text" 
+                                        placeholder="제목 또는 내용으로 검색..." 
+                                        className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all text-left"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                                <select 
+                                    className="px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[140px] text-left"
+                                    value={filterCategory}
+                                    onChange={(e) => setFilterCategory(e.target.value)}
+                                >
+                                    <option value="전체">모든 비목</option>
+                                    {categories.map((cat, idx) => (
+                                        <option key={idx} value={cat}>{cat}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="divide-y divide-slate-100 min-h-[300px]">
+                                {loading && inquiries.length === 0 ? (
+                                    <div className="p-24 text-center text-slate-400">
+                                        <div className="flex flex-col items-center gap-4">
+                                            <Icon name="loader-2" className="animate-spin text-blue-500" size={40} />
+                                            <p className="font-bold text-slate-600">데이터를 로딩 중입니다...</p>
+                                        </div>
+                                    </div>
+                                ) : filteredInquiries.length > 0 ? (
+                                    filteredInquiries.map((item, idx) => (
+                                        <InquiryItem 
+                                            key={item.ID || idx} 
+                                            item={item} 
+                                            onEdit={() => { setEditingItem(item); setIsModalOpen(true); }}
+                                            onDelete={() => setDeleteConfirmId(item.ID)}
+                                        />
+                                    ))
+                                ) : (
+                                    <div className="p-20 text-center text-slate-400">
+                                        {loading ? "데이터 갱신 중..." : "표시할 데이터가 없습니다."}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {isModalOpen && (
+                        <Modal 
+                            item={editingItem} 
+                            categories={categories}
+                            onClose={() => setIsModalOpen(false)} 
+                            onSave={handleSave} 
+                            loading={loading}
+                        />
+                    )}
+
+                    {deleteConfirmId && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 modal-overlay">
+                            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
+                                <div className="flex items-center gap-3 text-red-600 mb-4 text-left">
+                                    <Icon name="trash-2" size={24} />
+                                    <h3 className="text-lg font-bold">삭제 확인</h3>
+                                </div>
+                                <p className="text-slate-500 text-sm mb-6 leading-relaxed text-left">정말 삭제하시겠습니까? 구글 시트에서도 즉시 제거됩니다.</p>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">취소</button>
+                                    <button onClick={confirmDelete} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700">삭제</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const StatCard = ({ title, value, icon, color }) => (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 text-left">
+                <div className="p-3 bg-slate-50 rounded-lg">
+                    <Icon name={icon} className={color} />
+                </div>
+                <div>
+                    <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">{title}</p>
+                    <p className="text-2xl font-bold text-slate-900">{value}건</p>
+                </div>
+            </div>
+        );
+
+        const InquiryItem = ({ item, onEdit, onDelete }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            
+            const category = (item['비목'] || "기타").toString();
+            const title = (item['제목'] || "제목 없음").toString();
+            const status = (item['상태'] || "대기").toString();
+            const firm = (item['회계법인'] || "-").toString();
+            const date = (item['날짜'] || "-").toString();
+            const priority = (item['우선순위'] || "중간").toString();
+            const question = (item['질의내용'] || "").toString();
+            const answer = (item['답변내용'] || "").toString();
+
+            const statusColors = {
+                '완료': 'bg-green-100 text-green-700 border-green-200',
+                '검토중': 'bg-blue-100 text-blue-700 border-blue-200',
+                '대기': 'bg-slate-100 text-slate-700 border-slate-200'
+            };
+
+            return (
+                <div className={`transition-all ${isOpen ? 'bg-blue-50/30' : 'hover:bg-slate-50'}`}>
+                    <div className="p-4 flex items-center justify-between cursor-pointer select-none" onClick={() => setIsOpen(!isOpen)}>
+                        <div className="flex items-center gap-4 flex-1">
+                            <div className={`w-2 h-2 rounded-full ${priority === '높음' ? 'bg-red-500' : 'bg-slate-300'}`} />
+                            <div className="flex-1 text-left">
+                                <div className="flex items-center gap-2 mb-1 text-left">
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">
+                                        {category}
+                                    </span>
+                                    <h3 className="font-semibold text-slate-900 leading-none">{title}</h3>
+                                </div>
+                                <div className="flex items-center gap-4 text-xs text-slate-500">
+                                    <span className="flex items-center gap-1"><Icon name="building" size={12}/>{firm}</span>
+                                    <span className="flex items-center gap-1"><Icon name="calendar" size={12}/>{date}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span className={`text-[11px] px-2.5 py-1 rounded-full border font-bold ${statusColors[status] || statusColors['대기']}`}>
+                                {status}
+                            </span>
+                            <Icon name="chevron-right" className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+                        </div>
+                    </div>
+
+                    {isOpen && (
+                        <div className="px-12 pb-6 pt-2 animate-in slide-in-from-top-1 duration-200 text-left">
+                            <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm space-y-4 text-left">
+                                <div>
+                                    <h4 className="text-[11px] font-bold text-blue-600 mb-1 flex items-center gap-1 uppercase tracking-tight">
+                                        <Icon name="help-circle" size={14}/> 질의 내용
+                                    </h4>
+                                    <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{question}</p>
+                                </div>
+                                <div className="pt-4 border-t border-slate-100">
+                                    <h4 className="text-[11px] font-bold text-green-600 mb-1 flex items-center gap-1 uppercase tracking-tight">
+                                        <Icon name="check-circle" size={14}/> 회계법인 답변
+                                    </h4>
+                                    <p className="text-sm text-slate-700 italic leading-relaxed">{answer || "답변을 기다리고 있습니다."}</p>
+                                </div>
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-xs font-bold text-blue-600 px-4 py-2 rounded-lg border border-blue-200 hover:bg-blue-50">수정하기</button>
+                                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-xs font-bold text-red-600 px-4 py-2 rounded-lg border border-red-200 hover:bg-red-50">삭제</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const Modal = ({ item, categories, onClose, onSave, loading }) => {
+            const [formData, setFormData] = useState(item ? {
+                ...item,
+                '비목': item['비목'] || categories[0],
+                '제목': item['제목'] || '',
+                '회계법인': item['회계법인'] || '',
+                '상태': item['상태'] || '대기',
+                '날짜': item['날짜'] || new Date().toISOString().split('T')[0],
+                '질의내용': item['질의내용'] || '',
+                '답변내용': item['답변내용'] || '',
+                '우선순위': item['우선순위'] || '중간'
+            } : {
+                '비목': categories[0], '제목': '', '회계법인': '', '상태': '대기',
+                '날짜': new Date().toISOString().split('T')[0], '질의내용': '', '답변내용': '', '우선순위': '중간'
+            });
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 modal-overlay text-left">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden text-left flex flex-col max-h-[90vh]">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h2 className="text-xl font-bold">{item ? "질의 내역 수정" : "새 질의 등록"}</h2>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><Icon name="x" size={20} /></button>
+                        </div>
+                        <div className="p-6 space-y-4 overflow-y-auto">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-bold text-slate-400 uppercase">비목</label>
+                                    <select className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['비목']} onChange={(e) => setFormData({...formData, '비목': e.target.value})}>
+                                        {categories.map((cat, idx) => (
+                                            <option key={idx} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-bold text-slate-400 uppercase">회계법인</label>
+                                    <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['회계법인']} onChange={(e) => setFormData({...formData, '회계법인': e.target.value})} placeholder="법인명 (예: 안진)" />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-bold text-slate-400 uppercase">제목 (요약)</label>
+                                <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['제목']} onChange={(e) => setFormData({...formData, '제목': e.target.value})} placeholder="질의 요약" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-bold text-slate-400 uppercase">질의 상세 내용</label>
+                                <textarea className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]" value={formData['질의내용']} onChange={(e) => setFormData({...formData, '질의내용': e.target.value})} />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-bold text-slate-400 uppercase">회계법인 답변 내용</label>
+                                <textarea className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]" value={formData['답변내용']} onChange={(e) => setFormData({...formData, '답변내용': e.target.value})} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-bold text-slate-400 uppercase">처리 상태</label>
+                                    <select className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['상태']} onChange={(e) => setFormData({...formData, '상태': e.target.value})}>
+                                        <option>대기</option><option>검토중</option><option>완료</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-bold text-slate-400 uppercase">우선순위</label>
+                                    <select className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['우선순위']} onChange={(e) => setFormData({...formData, '우선순위': e.target.value})}>
+                                        <option>낮음</option><option>중간</option><option>높음</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                            <button onClick={onClose} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-lg">취소</button>
+                            <button onClick={() => onSave(formData)} disabled={loading} className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 shadow-lg">
+                                {loading ? <Icon name="loader-2" className="animate-spin" /> : <Icon name="save" />}
+                                <span>저장하기</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

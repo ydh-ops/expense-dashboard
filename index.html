@@ -4,19 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>사업비 이슈 및 회계 질의 관리</title>
-    <!-- React 및 라이브러리 로드 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
         body { font-family: 'Pretendard', sans-serif; -webkit-font-smoothing: antialiased; }
         .animate-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .modal-overlay { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); }
-        /* 줄바꿈 보존을 위한 추가 스타일 */
         .preserve-newlines {
             white-space: pre-wrap;
             word-break: break-word;
@@ -27,7 +25,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect, useCallback } = React;
+        const { useState, useMemo, useEffect, useCallback, useRef } = React;
 
         // 최신 웹앱 URL
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5IS-sr9Jd5qlYwCHeJkppCMgPa2267xBCuGWR0Czo0GJkO8jgl08GKBVVTvt2wmIb/exec";
@@ -41,8 +39,29 @@
             return `${year}-${month}-${day}`;
         };
 
+        // 안전한 아이콘 컴포넌트 구현
         const Icon = ({ name, size = 18, className = "" }) => {
-            return <i data-lucide={name} className={className} style={{ width: size, height: size, display: 'inline-flex' }}></i>;
+            const iconRef = useRef(null);
+
+            useEffect(() => {
+                if (iconRef.current && window.lucide) {
+                    // 기존에 생성된 아이콘 엘리먼트가 있다면 초기화
+                    iconRef.current.innerHTML = '';
+                    const iconNode = window.lucide.createSvg({
+                        name: name,
+                        attrs: {
+                            class: className,
+                            width: size,
+                            height: size
+                        }
+                    });
+                    if (iconNode) {
+                        iconRef.current.appendChild(iconNode);
+                    }
+                }
+            }, [name, size, className]);
+
+            return <span ref={iconRef} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: size, height: size }} />;
         };
 
         const App = () => {
@@ -84,10 +103,6 @@
             useEffect(() => {
                 fetchData();
             }, [fetchData]);
-
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            });
 
             const handleSave = async (formData) => {
                 setLoading(true);
@@ -184,14 +199,14 @@
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-left">
                             <StatCard title="전체 이슈" value={stats.total} icon="file-text" color="text-blue-500" />
-                            <StatCard title="검토 완료" value={stats.completed} icon="check-circle-2" color="text-green-500" />
+                            <StatCard title="검토 완료" value={stats.completed} icon="check-circle" color="text-green-500" />
                             <StatCard title="진행중/대기" value={stats.pending} icon="clock" color="text-amber-500" />
                         </div>
 
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-left">
                             <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-4">
                                 <div className="relative flex-1">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 flex items-center">
                                         <Icon name="search" size={16} />
                                     </div>
                                     <input 
@@ -216,8 +231,8 @@
 
                             <div className="divide-y divide-slate-100 min-h-[300px]">
                                 {loading && inquiries.length === 0 ? (
-                                    <div className="p-24 text-center text-slate-400">
-                                        <Icon name="loader-2" className="animate-spin mb-2" size={32} />
+                                    <div className="p-24 text-center text-slate-400 flex flex-col items-center justify-center">
+                                        <Icon name="refresh-cw" className="animate-spin mb-2" size={32} />
                                         <p>데이터 로딩 중...</p>
                                     </div>
                                 ) : filteredInquiries.length > 0 ? (
@@ -360,7 +375,7 @@
                 '상태': '대기',
                 '날짜': getToday(), 
                 '질의내용': '', 
-                '답변내용': '', 
+                '답변не용': '', 
                 '우선순위': '중간'
             });
 
@@ -383,24 +398,24 @@
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-[11px] font-bold text-slate-400 uppercase">회계법인</label>
-                                    <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['회계법인']} onChange={(e) => setFormData({...formData, '회계법인': e.target.value})} placeholder="법인명" />
+                                    <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['회계법인'] || ''} onChange={(e) => setFormData({...formData, '회계법인': e.target.value})} placeholder="법인명" />
                                 </div>
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[11px] font-bold text-slate-400 uppercase">제목 (요약)</label>
-                                <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['제목']} onChange={(e) => setFormData({...formData, '제목': e.target.value})} placeholder="질의 요약" />
+                                <input className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['제목'] || ''} onChange={(e) => setFormData({...formData, '제목': e.target.value})} placeholder="질의 요약" />
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[11px] font-bold text-slate-400 uppercase">날짜 (오늘: {getToday()})</label>
-                                <input type="date" className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['날짜']} onChange={(e) => setFormData({...formData, '날짜': e.target.value})} />
+                                <input type="date" className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" value={formData['날짜'] || ''} onChange={(e) => setFormData({...formData, '날짜': e.target.value})} />
                             </div>
                             <div className="space-y-1 text-left">
                                 <label className="text-[11px] font-bold text-slate-400 uppercase">질의 상세 내용 (줄바꿈 가능)</label>
-                                <textarea className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]" value={formData['질의내용']} onChange={(e) => setFormData({...formData, '질의내용': e.target.value})} />
+                                <textarea className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]" value={formData['질의내용'] || ''} onChange={(e) => setFormData({...formData, '질의내용': e.target.value})} />
                             </div>
                             <div className="space-y-1 text-left">
                                 <label className="text-[11px] font-bold text-slate-400 uppercase">회계법인 답변 내용 (줄바꿈 가능)</label>
-                                <textarea className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]" value={formData['답변내용']} onChange={(e) => setFormData({...formData, '답변내용': e.target.value})} />
+                                <textarea className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]" value={formData['답변내용'] || ''} onChange={(e) => setFormData({...formData, '답변내용': e.target.value})} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
@@ -420,7 +435,7 @@
                         <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 text-left">
                             <button onClick={onClose} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-lg transition-colors">취소</button>
                             <button onClick={() => onSave(formData)} disabled={loading} className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 shadow-lg transition-all active:scale-95">
-                                {loading ? <Icon name="loader-2" className="animate-spin" /> : <Icon name="save" />}
+                                {loading ? <Icon name="refresh-cw" className="animate-spin" /> : <Icon name="save" />}
                                 <span>저장하기</span>
                             </button>
                         </div>

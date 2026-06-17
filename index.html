@@ -4,11 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>사업비 이슈 및 회계 질의 관리</title>
+    <!-- React 및 라이브러리 로드 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <!-- [중요 수정] 최신 모듈 에러를 방지하기 위해 브라우저용 구버전(v0.300.0)으로 주소를 고정합니다 -->
+    <script src="https://unpkg.com/lucide@0.300.0/dist/umd/lucide.min.js"></script>
+    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
         body { font-family: 'Pretendard', sans-serif; -webkit-font-smoothing: antialiased; }
@@ -39,29 +43,42 @@
             return `${year}-${month}-${day}`;
         };
 
-        // 안전한 아이콘 컴포넌트 구현
+        // 브라우저용 Lucide에 안전하게 호환되는 아이콘 컴포넌트
         const Icon = ({ name, size = 18, className = "" }) => {
             const iconRef = useRef(null);
 
             useEffect(() => {
                 if (iconRef.current && window.lucide) {
-                    // 기존에 생성된 아이콘 엘리먼트가 있다면 초기화
                     iconRef.current.innerHTML = '';
-                    const iconNode = window.lucide.createSvg({
-                        name: name,
-                        attrs: {
-                            class: className,
-                            width: size,
-                            height: size
+                    try {
+                        // 구버전 Lucide 스크립트에 안전한 엘리먼트 주입 방식
+                        const svgString = window.lucide.createSvg({
+                            name: name,
+                            attrs: {
+                                class: className,
+                                width: size,
+                                height: size,
+                                stroke: 'currentColor',
+                                'stroke-width': 2,
+                                fill: 'none',
+                                'stroke-linecap': 'round',
+                                'stroke-linejoin': 'round'
+                            }
+                        });
+                        
+                        // 엘리먼트 객체 또는 문자열 대응
+                        if (svgString instanceof SVGElement) {
+                            iconRef.current.appendChild(svgString);
+                        } else if (typeof svgString === 'string') {
+                            iconRef.current.innerHTML = svgString;
                         }
-                    });
-                    if (iconNode) {
-                        iconRef.current.appendChild(iconNode);
+                    } catch (e) {
+                        console.error("아이콘 생성 실패:", name, e);
                     }
                 }
             }, [name, size, className]);
 
-            return <span ref={iconRef} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: size, height: size }} />;
+            return <span ref={iconRef} className="inline-flex items-center justify-center" style={{ width: size, height: size, verticalAlign: 'middle' }} />;
         };
 
         const App = () => {
@@ -375,7 +392,7 @@
                 '상태': '대기',
                 '날짜': getToday(), 
                 '질의내용': '', 
-                '답변не용': '', 
+                '답변내용': '', 
                 '우선순위': '중간'
             });
 
